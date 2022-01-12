@@ -18,5 +18,5 @@ cd -P "$SCRIPT_DIR" || exit 69
 
 git pull
 
-find . -maxdepth 1 ! -name '.git' ! -name "$SCRIPT_NAME" \
+find . -maxdepth 1 ! -name . ! -name '.git' ! -name "$SCRIPT_NAME" \
        -exec cp -av '{}' "$HOME" ';' 
