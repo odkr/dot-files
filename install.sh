@@ -9,4 +9,4 @@ REPO="$(git rev-parse --show-toplevel)" && [ "$REPO" ] || {
 readonly REPO
 
 cd -P "$REPO" || exit 69
-cp -a . "$HOME/"
+cp -av . "$HOME/"
