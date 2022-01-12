@@ -18,4 +18,5 @@ cd -P "$SCRIPT_DIR" || exit 69
 
 git pull
 
-find . ! -name .git -a ! -name "$SCRIPT_NAME" -execdir cp -av '{}' "$HOME/" +
+find . '(' -name .git -prune ')' -o \
+       '(' ! -name "$SCRIPT_NAME" -exec cp -av '{}' "$HOME" ';)'
