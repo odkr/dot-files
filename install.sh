@@ -13,4 +13,4 @@ cd -P "$SCRIPT_DIR" || exit 69
 
 git pull
 
-cp -av . "$HOME/"
+find . ! -name .git -execdir cp -av '{}' + "$HOME/"
