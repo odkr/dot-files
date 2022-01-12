@@ -1,0 +1,5 @@
+#!/bin/sh
+
+alias mosh='LC_ALL="$LANG" mosh'
+alias sieve-connect='LC_ALL="$LANG" sieve-connect'
+
