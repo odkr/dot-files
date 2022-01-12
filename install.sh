@@ -1,12 +1,16 @@
 #!/bin/sh
 
+set -eu
+
 : "${HOME:?}"
 
-REPO="$(git rev-parse --show-toplevel)" && [ "$REPO" ] || {
-	printf '%s: failed to find repository.\n' "$0" >&2
+SCRIPT_DIR="$(dirname "$0")" && [ "$SCRIPT_NAME" ] || {
+	printf '%s: failed to locate myself.\n' "$0" >&2
 	exit 69
 }
-readonly REPO
 
-cd -P "$REPO" || exit 69
+cd -P "$SCRIPT_DIR" || exit 69
+
+git pull
+
 cp -av . "$HOME/"
