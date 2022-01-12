@@ -4,7 +4,7 @@ set -eu
 
 : "${HOME:?}"
 
-SCRIPT_DIR="$(dirname "$0")" && [ "$SCRIPT_NAME" ] || {
+SCRIPT_DIR="$(dirname "$0")" && [ "$SCRIPT_DIR" ] || {
 	printf '%s: failed to locate myself.\n' "$0" >&2
 	exit 69
 }
