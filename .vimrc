@@ -6,7 +6,6 @@ set viminfo='20\,\"50
 
 set hlsearch	
 set showmatch	
-set showbreak=+
 set visualbell	
 set ruler
 

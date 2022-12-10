@@ -4,19 +4,11 @@ set -eu
 
 : "${HOME:?}"
 
-SCRIPT_NAME="$(basename "$0")" && [ "$SCRIPT_NAME" ] || {
-	printf '%s: failed to determine my filename.\n' "$0" >&2
-	exit 69
-}
+dir="$(dirname "$0")"
 
-SCRIPT_DIR="$(dirname "$0")" && [ "$SCRIPT_DIR" ] || {
-	printf '%s: failed to locate myself.\n' "$0" >&2
-	exit 69
-}
-
-cd -P "$SCRIPT_DIR" || exit 69
+cd -P "$dir" || exit
 
 git pull
 
-find . -maxdepth 1 ! -name . ! -name '.git' ! -name "$SCRIPT_NAME" \
+find . -maxdepth 1 ! -name . ! -name '.git' -name '.*' \
        -exec cp -av '{}' "$HOME" ';' 

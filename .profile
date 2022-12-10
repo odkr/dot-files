@@ -1,273 +1,225 @@
 #!/bin/sh
 
-# SETTINGS
-# ========
-
-# A space-separated list of preferred locales.
-# All locales are assumed to be UTF-8.
-__DP_LOCALES='en_GB en_US en_* de_AT de_DE de_* C'
+set -Cfu
 
 
-# GLOBALS 
-# =======
+#
+# Settings
+#
 
-__DP_UNAME="$(uname -s)"
+# Space-separated list of patterns matching locales in order of preference.
+langs='en_GB en_US en_* de_AT de_DE de_* POSIX C'
 
-
-# PATH
-# ====
-
-__dp_add_to_path() {
-    [ $# -eq 0 ] && return
-    case $PATH in
-        ("$1"|"$1:"*|*":$1"|*":$1:"*) : ;;
-        (*) [ -d "$1" ] && PATH="$PATH:$1" ;;
-    esac
-    if [ $# -gt 1 ]; then
-        shift
-        __dp_add_to_path "$@"
-    fi
-}
-
-# Add root's PATH
-__DP_UID="$(id -u)"
-
-if [ "$__DP_UID" -eq 0 ]
-then
-	# Add `sbin` to the path if we are the superuser.
-	__dp_add_to_path /sbin /usr/sbin /usr/local/sbin
-else
-	# Add luarocks if it's available.
-	__DP_LUAROCKS_ENV="$(luarocks path 2>/dev/null)" &&
-		eval "$__DP_LUAROCKS_ENV"
-	unset __DP_LUAROCKS_ENV
-
-	# Add iTerm2's utilities, if they are present.
-	__dp_add_to_path "$HOME/.iterm2"
-fi
-
-# Add the user's `/bin`s to the `PATH`, if they exist.
-__dp_add_to_path "$HOME/.local/bin" "$HOME/bin"
-
-# Add homebrew.
-__dp_add_to_path /opt/homebrew/bin
-
-case $__DP_UNAME in
-    # Use the user's Python installations on macOS if there arey any.
-    (Darwin) __DP_PYTHON="$HOME/Library/Python"
-             [ -e "$__DP_PYTHON" ] && __dp_add_to_path "$__DP_PYTHON/"*"/bin"
-	     unset __DP_PYTHON
-	     ;;
-    # If this may be a DSM box, check for Optware-NG.
-    (Linux)  if [ -d /volume1/@optware ]; then
-                 [ "$__DP_UID" -eq 0 ] && __dp_add_to_path /opt/sbin
-                 __dp_add_to_path /opt/bin
-             fi
-	     ;;
-esac
-
-unset -f __dp_add_to_path
+# Space-separated list of editors in order of preference.
+editors='vim nano ne vi'
 
 
-# TMUX
-# ====
+#
+# Functions
+#
 
-# If this shell is interactive, has been started by SSH, and the current user
-# is *not* root, then check if there is an unattached tmux session; if there
-# is one connect to it, otherwise start a new one and connect to that. If the
-# user runs iTerm2, this is *not* a mosh session, and tmux is recent enough
-# to support it, then connect using tmux' control mode.
+# Check if $needle compares to any remaining argument using the operator $cmp.
+inlist() (
+	cmp="${1:?}" needle="${2:?}"
+	shift 2
 
-__dp_has_parent_posix() {
-    : "${1:?}" "${2:?}"
-    # shellcheck disable=2030,2034
-    ps -u "${LOGNAME:="$(logname)"}" -o pid=,ppid=,comm= | sort -r |
-    while read -r pid ppid comm _; do
-        [ "$pid" = "${i-"$1"}" ] || continue
-        if [ "${comm##*/}" = "$2" ]; then
-            printf -- '%d\n' "$pid"
-            return 1
-        fi
-        i="$ppid"
-    done || return 0
-    return 1
-}
+	for straw
+	do
+		test "$needle" "$cmp" "$straw" && return 0
+	done
 
-__dp_has_parent_linux() {
-    # shellcheck disable=2039,3043
-    local i="${1:?}" needle="${2:?}" key value comm ppid 
-    # shellcheck disable=2034
-    while [ "$i" -gt 1 ]; do
-        while read -r key value; do
-            case $key in
-                (Name:) comm="$value" ;;
-                (PPid:) ppid="$value"
-                        break
-            esac
-        done <"/proc/$i/status"
-        if [ "$comm" = "$needle" ]; then
-            printf -- '%d\n' "$i"
-            return 0
-        fi
-        i="$ppid"
-    done
-    return 1
-}
-
-__dp_has_parent() {
-    if [ "$__DP_UNAME" = Linux ] && [ -d /proc ]
-        then __dp_has_parent_linux "$@"
-        else __dp_has_parent_posix "$@"
-    fi
-}
-
-__dp_is_mosh() (
-    if
-        tmux_cls="$(tmux list-clients -F '#S:#{client_pid}' 2>/dev/null)" &&
-        [ "$tmux_cls" ]
-    then
-        [ "$ZSH_VERSION" ] && emulate sh
-        # shellcheck disable=2086
-        set -- $tmux_cls
-        if [ $# -eq 1 ]; then
-            pid="${tmux_cls##*:}"
-        else
-            tmux_sess="$(tmux display-message -p '#S')" || return
-            : "${tmux_sess:?}"
-            for tmux_cl; do
-                case $tmux_cl in ($tmux_sess:*)
-                    pid="${tmux_cl##*:}"
-                    break
-                esac
-            done
-        fi
-    fi
-    : "${pid:=$$}"
-    __dp_has_parent "$pid" mosh-server
+	return 1
 )
 
-__dp_is_iterm2() {
-    [ "$LC_TERMINAL" = "iTerm2" ] || it2check 2>/dev/null
+# Check if $dir is in the $PATH.
+inpath() (
+	dir="${1:?}"
+
+	[ "${ZSH_VERSION-}" ] && emulate sh
+
+	IFS=:
+	set -- $PATH
+	inlist = "$dir" "$@"
+)
+
+# Add each given directory to the $PATH.
+addtopath() {
+	for __addtopath_dir
+	do
+		if ! inpath "$__addtopath_dir" && [ -e "$__addtopath_dir" ]
+		then
+			if [ "${PATH-}" ]
+				then PATH="$PATH:$__addtopath_dir"
+				else PATH="$__addtopath_dir"
+			fi
+		fi
+	done
+
+	unset __addtopath_dir
 }
 
-if MOSH_SERVER_PID="$(__dp_is_mosh)" && [ "$MOSH_SERVER_PID" ]
-    then export MOSH_SERVER_PID
-    else unset MOSH_SERVER_PID
+# Store the first of the given programmes that is installed in $var.
+setprog() {
+	__setprog_var="${1:?}"
+	shift 1
+
+	if [ "${ZSH_VERSION-}" ]
+	then
+		emulate sh
+		setopt localoptions
+		set -- $*
+	fi
+
+	for __setprog_prog
+	do
+		if command -v "$__setprog_prog" >/dev/null 2>&1
+		then
+			eval "$__setprog_var"='"$__setprog_prog"'
+			break
+		fi
+	done
+
+	unset __setprog_var __setprog_prog
+}
+
+
+#
+# Environment
+#
+
+: "${HOME:?}"
+
+
+#
+# Globals
+#
+
+# System name.
+uname="$(uname -s)"
+
+# Current user.
+uid="$(id -u)"
+
+
+#
+# Path
+#
+
+if [ "$uid" -eq 0 ]
+then
+	addtopath /sbin /usr/sbin /usr/local/sbin
+else
+	addtopath "$HOME/.iterm2"
 fi
+
+addtopath "$HOME/.local/bin" "$HOME/bin"
+
+if brew="$(brew --prefix 2>/dev/null)"
+then
+	[ "$uid" -eq 0 ] && addtopath "$brew/sbin"
+	addtopath "$brew/bin"
+fi
+unset brew
+
+addtopath /usr/bin/flashupdt
+
+
+#
+# Locale
+#
+
+locales="$(locale -a | grep -Ei '\.utf-?8$')"
+for lang in $langs
+do
+	for locale in $locales
+	do
+		case $locale in ("$lang".*|$lang)
+			LANG="$locale" LC_ALL="$locale"
+			break 2
+		esac
+	done
+done
+
+unset lang langs locale locales
+
+
+#
+# tmux
+#
 
 case $- in (*i*)
-    if [ "$SSH_CONNECTION" ] && ! [ "$SCREEN" ] && [ "$__DP_UID" -ne 0 ] &&
-        command -v tmux >/dev/null 2>&1
-    then
-        if [ "$TMUX" ]; then
-            # shellcheck disable=2031,2034
-            [ "${LOGNAME:="$(logname)"}" ] && last "$LOGNAME" 2>/dev/null | 
-                while read -r user tty host date; do
-                    [ "$user" ] || return
-                    case $host in (mosh|"tmux("*|et) continue; esac
-                    case $date in (*"still logged in") continue; esac
-                    date="$(printf -- '%s\n' "$date" |
-                            sed 's/^v[^ ]*//; s/ - /-/; s/ \{1,\}/ /g')"
-                    printf -- 'Last login: %s from %s\n' "$date" "$host"
-                    break    
-                done
-        else
-            if ! [ "$MOSH_SERVER_PID" ] && __dp_is_iterm2; then
-                # -CC is supported since v1.8, strictly speaking. 
-                case $(tmux -V) in
-                    ("tmux 1."*) : ;;
-                    (*)          tmux_args=-CC ;;
-                esac
-            fi
-            tmux_sess="$(tmux list-sessions -F '#S:#{session_attached}' |
-                        awk -F: '$2 == 0 {print $1; exit}')"
-            if [ "$tmux_sess" ]
-                then exec tmux $tmux_args -u attach-session -t "$tmux_sess"
-                else exec tmux $tmux_args -u new-session
-            fi   
-        fi
-    fi 
+	if
+		[ -n "${SSH_CONNECTION-}" ] &&
+		[ -z "${SCREEN-}" ] && [ -z "${TMUX-}" ] &&
+		[ "$uid" -ne 0 ] &&
+		command -v tmux >/dev/null 2>&1
+	then
+		cc=
+		# Assume tmux >= v1.8.
+		[ "${LC_TERMINAL-}" = iTerm2 ] || it2check 2>/dev/null &&
+			cc=-CC
+
+		for sess in $(tmux list-sessions -F '#S:#{session_attached}')
+		do
+			case $sess in (*:0)
+				exec tmux $cc attach-session -t"${sess%:*}"
+			esac
+		done
+
+		exec tmux $cc new-session
+	fi
 esac
 
-unset -f __dp_has_parent_posix __dp_has_parent_linux __dp_has_parent \
-    __dp_is_mosh __dp_is_iterm2
+
+#
+# Python
+#
+
+case $uname in (Darwin)
+	addtopath "$HOME"/Library/Python/*/bin
+esac
 
 
-# LOCALE
-# ======
+#
+# Lua
+#
 
-__dp_get_pref_locale() (
-    [ "$ZSH_VERSION" ] && emulate sh
-    utf8_locales="$(locale -a | grep -iE '\.utf-?8$')"
-    for preferred; do
-        for locale in $utf8_locales; do
-            # shellcheck disable=2254
-            case "$locale" in ("$preferred".*|$preferred)
-                printf -- '%s\n' "$locale"
-                return
-            esac
-        done
-    done
-    return 1
-)
-
-# shellcheck disable=2086
-if LANG="$([ "$ZSH_VERSION" ] && emulate sh
-           __dp_get_pref_locale $__DP_LOCALES)" && [ "$LANG" ]
-    then export LANG
-    else unset LANG
-fi
-
-unset -f __dp_get_pref_locale
-unset __DP_LOCALES
+[ "$uid" -ne 0 ] && eval $(luarocks path 2>/dev/null) || :
 
 
-# PROGRAMMES
-# ==========
+#
+# Programmes
+#
 
-__dp_select_prog() {
-    __DP_SELECT_VAR="${1:?}"
-    shift
-    for __DP_SELECT_ITER; do
-        if
-            __DP_SELECT_PROG="$(command -v "$__DP_SELECT_ITER" 2>/dev/null)" &&
-            [ "$__DP_SELECT_PROG" ]
-        then
-            eval "$__DP_SELECT_VAR=\"\$__DP_SELECT_PROG\""
-            export "${__DP_SELECT_VAR?}"
-            break
-        fi
-    done
-    unset __DP_SELECT_VAR __DP_SELECT_ITER __DP_SELECT_PROG
-}
+setprog EDITOR ${editors-}
+[ "${EDITOR-}" ] && VISUAL="$EDITOR"
 
-# Use vim if it's available.
-__DP_EDITORS='vim nano vi'
-__dp_select_prog EDITOR $__DP_EDITORS
-__dp_select_prog VISUAL $__DP_EDITORS
-unset __DP_EDITORS
+setprog PAGER less more
 
-# Use less if it's available.
-__dp_select_prog PAGER less more
-
-unset -f __dp_select_prog
+export EDITOR VISUAL PAGER
 
 
-# ENVIRONMENT
-# ===========
-
-export ET_NO_TELEMETRY=x
-
-
-# DEBIAN
-# ======    
+#
+# Debian
+#
 
 if [ -r /etc/debian_chroot ]; then
     : "${debian_chroot:="$(cat /etc/debian_chroot)"}"
 fi
 
 
-# CLEANUP
-# =======
+#
+# Varia
+#
 
-unset __DP_UNAME __DP_UID
+export ET_NO_TELEMETRY=x
+
+
+#
+# Cleanup
+#
+
+unset -f inpath addtopath setprog
+unset uname uid
+set +Cfu
+
