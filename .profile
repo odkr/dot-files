@@ -128,19 +128,34 @@ addtopath /usr/bin/flashupdt
 # Locale
 #
 
-locales="$(locale -a | grep -Ei '\.utf-?8$')"
-for lang in $langs
-do
-	for locale in $locales
-	do
-		case $locale in ("$lang".*|$lang)
-			LANG="$locale" LC_ALL="$locale"
-			break 2
-		esac
-	done
-done
+setlang() {
+	if [ "${ZSH_VERSION-}" ]
+	then
+		emulate sh
+		setopt localoptions
+	fi
 
-unset lang langs locale locales
+	set -- $*
+
+	locales="$(locale -a | grep -Ei '\.utf-?8$')"
+	for lang
+	do
+		for locale in $locales
+		do
+			case $locale in ("$lang".*|$lang)
+				export LANG="$locale"
+				break 2
+			esac
+		done
+	done
+
+	unset locales locale lang
+}
+
+setlang $langs
+
+unset -f setlang
+unset langs
 
 
 #
