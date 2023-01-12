@@ -44,18 +44,18 @@ inpath() (
 
 # Add each given directory to the $PATH.
 addtopath() {
-	for __addtopath_dir
+	for dir
 	do
-		if ! inpath "$__addtopath_dir" && [ -e "$__addtopath_dir" ]
+		if ! inpath "$dir" && [ -e "$dir" ]
 		then
 			if [ "${PATH-}" ]
-				then PATH="$PATH:$__addtopath_dir"
-				else PATH="$__addtopath_dir"
+				then PATH="$PATH:$dir"
+				else PATH="$dir"
 			fi
 		fi
 	done
 
-	unset __addtopath_dir
+	unset dir
 }
 
 # Store the first of the given programmes that is installed in $var.
@@ -106,10 +106,8 @@ uid="$(id -u)"
 #
 
 if [ "$uid" -eq 0 ]
-then
-	addtopath /sbin /usr/sbin /usr/local/sbin
-else
-	addtopath "$HOME/.iterm2"
+	then addtopath /sbin /usr/sbin /usr/local/sbin
+	else addtopath "$HOME/.iterm2"
 fi
 
 addtopath "$HOME/.local/bin" "$HOME/bin"
@@ -164,24 +162,25 @@ unset langs
 
 case $- in (*i*)
 	if
-		[ -n "${SSH_CONNECTION-}" ] &&
-		[ -z "${SCREEN-}" ] && [ -z "${TMUX-}" ] &&
-		[ "$uid" -ne 0 ] &&
+		[ -n "${SSH_CONNECTION-}" ]	&&
+		[ -z "${TMUX-}" ]		&&
+		[ -z "${SCREEN-}" ]		&&
+		[ "$uid" -ne 0 ]		&&
 		command -v tmux >/dev/null 2>&1
 	then
-		cc=
+		args=
 		# Assume tmux >= v1.8.
 		[ "${LC_TERMINAL-}" = iTerm2 ] || it2check 2>/dev/null &&
-			cc=-CC
+			args=-CC
 
 		for sess in $(tmux list-sessions -F '#S:#{session_attached}')
 		do
 			case $sess in (*:0)
-				exec tmux $cc attach-session -t"${sess%:*}"
+				exec tmux $args attach-session -t"${sess%:*}"
 			esac
 		done
 
-		exec tmux $cc new-session
+		exec tmux $args new-session
 	fi
 esac
 
@@ -190,9 +189,7 @@ esac
 # Python
 #
 
-case $uname in (Darwin)
-	addtopath "$HOME"/Library/Python/*/bin
-esac
+[ "$uname" = Darwin ] && addtopath "$HOME"/Library/Python/*/bin
 
 
 #
@@ -206,8 +203,8 @@ esac
 # Programmes
 #
 
-setprog EDITOR ${editors-}
-[ "${EDITOR-}" ] && VISUAL="$EDITOR"
+setprog VISUAL ${editors-}
+[ "${VISUAL-}" ] && EDITOR="$VISUAL"
 
 setprog PAGER less more
 
